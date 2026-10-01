@@ -1,0 +1,45 @@
+name: Build B4DDAX Music APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle executable
+        run: |
+          chmod +x ./gradlew
+
+      - name: Build Debug APK
+        run: |
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Find APK
+        run: |
+          find . -type f -name "*.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: B4DDAX-Music-debug-APK
+          path: |
+            **/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
