@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup JDK 17
@@ -26,38 +26,88 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Check project files
+      - name: Extract Android project
+        shell: bash
         run: |
-          echo "Current directory:"
-          pwd
-          echo "Project files:"
-          ls -la
+          set -e
+
+          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found."
+            exit 1
+          fi
+
+          echo "Found ZIP: $ZIP_FILE"
+
+          mkdir -p extracted_project
+          unzip -q "$ZIP_FILE" -d extracted_project
+
+          echo "Extracted files:"
+          find extracted_project -maxdepth 3 -type f | head -100
+
+      - name: Find Android project
+        shell: bash
+        run: |
+          set -e
+
+          PROJECT_DIR=$(find extracted_project -type f \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            -print -quit | xargs -r dirname)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android Gradle project not found."
+            echo "Searching for Gradle files..."
+            find extracted_project -type f \
+              \( -name "build.gradle" -o -name "build.gradle.kts" \)
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Android project found at:"
+          echo "$PROJECT_DIR"
+
+      - name: Check project
+        run: |
+          echo "Project directory:"
+          echo "$PROJECT_DIR"
+
+          ls -la "$PROJECT_DIR"
+
           echo "Gradle files:"
-          find . -maxdepth 3 -type f \( -name "build.gradle" -o -name "build.gradle.kts" -o -name "settings.gradle" -o -name "settings.gradle.kts" \)
+          find "$PROJECT_DIR" -maxdepth 3 -type f \
+            \( -name "build.gradle" -o -name "build.gradle.kts" \
+            -o -name "settings.gradle" -o -name "settings.gradle.kts" \)
 
       - name: Create Gradle Wrapper if missing
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           if [ ! -f "./gradlew" ]; then
-            echo "gradlew not found. Creating Gradle Wrapper..."
+            echo "gradlew missing. Creating wrapper..."
             gradle wrapper --gradle-version 8.10.2
           else
-            echo "gradlew already exists."
+            echo "gradlew found."
           fi
 
       - name: Make Gradle executable
+        working-directory: ${{ env.PROJECT_DIR }}
         run: chmod +x ./gradlew
 
       - name: Build Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Locate APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "Searching for APK..."
+          echo "APK files:"
           find . -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: B4DDAX-Music-debug-APK
-          path: "**/build/outputs/apk/debug/*.apk"
+          path: |
+            ${{ env.PROJECT_DIR }}/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
